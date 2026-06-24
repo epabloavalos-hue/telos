@@ -1,13 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-// ── Escala pentatónica en La menor ────────────────────────────────────────────
-// A C D E G — frecuencias (Hz) en varios registros, sesgadas al registro medio
 const NOTES = [
-  130.81, 146.83, 164.81, 196.00,                   // C3 D3 E3 G3
-  220.00, 261.63, 293.66, 329.63, 392.00,            // A3 C4 D4 E4 G4
-  440.00, 523.25, 587.33, 659.25,                    // A4 C5 D5 E5
-  783.99, 880.00,                                    // G5 A5
+  130.81, 146.83, 164.81, 196.00,
+  220.00, 261.63, 293.66, 329.63, 392.00,
+  440.00, 523.25, 587.33, 659.25,
+  783.99, 880.00,
 ];
 const WEIGHTS = [1, 1, 1, 1, 2, 3, 4, 3, 2, 3, 4, 3, 2, 1, 1];
 
@@ -21,11 +19,9 @@ function pickNote(): number {
   return NOTES[7];
 }
 
-// ── Reverb algorítmico ────────────────────────────────────────────────────────
-// Genera un buffer de ruido con decaimiento exponencial como impulso de convolución
 function buildReverb(ctx: AudioContext): ConvolverNode {
   const rate     = ctx.sampleRate;
-  const duration = 5.5;     // cola de reverb: 5.5 segundos
+  const duration = 5.5;
   const decay    = 2.8;
   const buf      = ctx.createBuffer(2, rate * duration, rate);
   for (let ch = 0; ch < 2; ch++) {
@@ -39,10 +35,6 @@ function buildReverb(ctx: AudioContext): ConvolverNode {
   return conv;
 }
 
-// ── Tono de campana real ───────────────────────────────────────────────────────
-// Las campanadas reales tienen parciales INARMÓNICOS (no múltiplos enteros).
-// Ratios de Helmholtz para campanas metálicas: 1 · 2.76 · 5.40 · 8.93
-// Cada parcial decae a diferente velocidad (los agudos más rápido).
 function playBell(
   ctx: AudioContext,
   reverb: ConvolverNode,
@@ -64,48 +56,40 @@ function playBell(
     const g   = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = freq * ratio;
-
-    // Ataque ultra rápido, decaimiento natural
     g.gain.setValueAtTime(0, now);
     g.gain.linearRampToValueAtTime(velocity * gain, now + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0001, now + rel);
-
     osc.connect(g);
-    g.connect(reverb);    // señal wet
-    g.connect(dryMix);   // toque de señal dry
+    g.connect(reverb);
+    g.connect(dryMix);
     osc.start(now);
     osc.stop(now + rel + 0.2);
   });
 }
 
-// ── Pad de dron (cuerdas/pad ambient) ────────────────────────────────────────
-// Crea un colchón de tonos base A2–A3 con vibrato lentísimo
 function buildDrone(
   ctx: AudioContext,
   reverb: ConvolverNode,
   master: GainNode
 ): OscillatorNode[] {
   const drones = [
-    { freq: 55.00,  gain: 0.045 },  // A1 — earth tone
-    { freq: 110.00, gain: 0.060 },  // A2 — base
-    { freq: 164.81, gain: 0.035 },  // E3 — quinta perfecta
-    { freq: 220.00, gain: 0.030 },  // A3 — octava
-    { freq: 261.63, gain: 0.015 },  // C4 — tercera menor (color sombrío)
+    { freq: 55.00,  gain: 0.045 },
+    { freq: 110.00, gain: 0.060 },
+    { freq: 164.81, gain: 0.035 },
+    { freq: 220.00, gain: 0.030 },
+    { freq: 261.63, gain: 0.015 },
   ];
 
   return drones.map(({ freq, gain }) => {
     const osc  = ctx.createOscillator();
     const g    = ctx.createGain();
-    const lfo  = ctx.createOscillator();  // vibrato muy lento
+    const lfo  = ctx.createOscillator();
     const lfog = ctx.createGain();
 
     osc.type = "sine";
     osc.frequency.value = freq;
-
-    // Micro-desafinación aleatoria para calidez (+/- 3 cents)
     osc.detune.value = (Math.random() - 0.5) * 6;
 
-    // LFO de amplitud: 0.04–0.12 Hz (ciclo de 8–25s)
     lfo.type = "sine";
     lfo.frequency.value = 0.04 + Math.random() * 0.08;
     lfog.gain.value = gain * 0.25;
@@ -125,9 +109,6 @@ function buildDrone(
   });
 }
 
-// ── Planificador de notas generativo ─────────────────────────────────────────
-// Crea dos flujos: uno frecuente, uno esporádico. Ocasionalmente toca
-// un patrón de 2-3 notas seguidas (como los "dings" de Monument Valley).
 function scheduleStream(
   ctx: AudioContext,
   reverb: ConvolverNode,
@@ -146,22 +127,19 @@ function scheduleStream(
     const freq     = pickNote();
     const velocity = 0.10 + Math.random() * 0.12;
 
-    // 20% chance de patrón (2-3 notas seguidas a ritmo libre)
     if (Math.random() < 0.20) {
-      const count    = 2 + Math.floor(Math.random() * 2);   // 2 o 3 notas
-      const interval = 350 + Math.random() * 500;           // 350–850ms entre notas
+      const count    = 2 + Math.floor(Math.random() * 2);
+      const interval = 350 + Math.random() * 500;
 
       for (let i = 0; i < count; i++) {
         const pt = setTimeout(() => {
           if (!runningRef.current) return;
-          // Notas del patrón: raíz + nota vecina de la escala
           const patFreq = i === 0 ? freq : pickNote();
           playBell(ctx, reverb, dryMix, patFreq, velocity * 0.85);
         }, i * interval);
         timersRef.current.push(pt);
       }
     } else {
-      // Nota sola
       playBell(ctx, reverb, dryMix, freq, velocity);
     }
 
@@ -171,15 +149,14 @@ function scheduleStream(
   timersRef.current.push(t);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function BackgroundMusic() {
-  const ctxRef      = useRef<AudioContext | null>(null);
-  const masterRef   = useRef<GainNode | null>(null);
-  const dronesRef   = useRef<OscillatorNode[]>([]);
-  const runningRef  = useRef(true);
-  const timersRef   = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const startedRef  = useRef(false);
+  const ctxRef       = useRef<AudioContext | null>(null);
+  const masterRef    = useRef<GainNode | null>(null);
+  const dronesRef    = useRef<OscillatorNode[]>([]);
+  const runningRef   = useRef(true);
+  const timersRef    = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const startedRef   = useRef(false);
+  const graphInitRef = useRef(false);
 
   const [muted, setMuted] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -191,9 +168,39 @@ export default function BackgroundMusic() {
     return parseFloat(localStorage.getItem("telos-music-volume") ?? "0.75");
   }
 
-  // Volumen = fracción almacenada × 0.9 (headroom para no saturar)
   function targetGain(): number {
     return muted ? 0.001 : getStoredVolume() * 0.9;
+  }
+
+  function initAudioGraph(ctx: AudioContext) {
+    if (graphInitRef.current) return;
+    graphInitRef.current = true;
+
+    const reverb     = buildReverb(ctx);
+    const reverbGain = ctx.createGain();
+    reverbGain.gain.value = 0.72;
+    reverb.connect(reverbGain);
+
+    const dryMix = ctx.createGain();
+    dryMix.gain.value = 0.06;
+
+    const master = ctx.createGain();
+    masterRef.current = master;
+    master.gain.setValueAtTime(0, ctx.currentTime);
+    master.gain.linearRampToValueAtTime(targetGain(), ctx.currentTime + 5);
+
+    reverbGain.connect(master);
+    dryMix.connect(master);
+    master.connect(ctx.destination);
+
+    dronesRef.current = buildDrone(ctx, reverb, master);
+
+    scheduleStream(ctx, reverb, dryMix, runningRef, timersRef, 3, 7);
+    const t2 = setTimeout(
+      () => scheduleStream(ctx, reverb, dryMix, runningRef, timersRef, 8, 18),
+      5000
+    );
+    timersRef.current.push(t2);
   }
 
   function start() {
@@ -203,66 +210,41 @@ export default function BackgroundMusic() {
     try {
       const ctx = new AudioContext();
       ctxRef.current = ctx;
-      if (ctx.state === "suspended") ctx.resume();
 
-      // ── Reverb ──
-      const reverb     = buildReverb(ctx);
-      const reverbGain = ctx.createGain();
-      reverbGain.gain.value = 0.72;
-      reverb.connect(reverbGain);
-
-      // ── Señal seca (muy sutil) ──
-      const dryMix = ctx.createGain();
-      dryMix.gain.value = 0.06;
-
-      // ── Master con fade-in ──
-      const master = ctx.createGain();
-      masterRef.current = master;
-      master.gain.setValueAtTime(0, ctx.currentTime);
-      master.gain.linearRampToValueAtTime(
-        targetGain(),
-        ctx.currentTime + 5   // fade-in de 5 segundos
-      );
-
-      reverbGain.connect(master);
-      dryMix.connect(master);
-      master.connect(ctx.destination);
-
-      // ── Dron ──
-      dronesRef.current = buildDrone(ctx, reverb, master);
-
-      // ── Melodía generativa — dos flujos ──
-      // Flujo 1: notas frecuentes (cada 3–7s)
-      scheduleStream(ctx, reverb, dryMix, runningRef, timersRef, 3, 7);
-
-      // Flujo 2: notas esporádicas (cada 8–18s), empieza con delay
-      const t2 = setTimeout(
-        () => scheduleStream(ctx, reverb, dryMix, runningRef, timersRef, 8, 18),
-        5000
-      );
-      timersRef.current.push(t2);
-
+      if (ctx.state === "running") {
+        initAudioGraph(ctx);
+      } else {
+        // iOS Safari — AudioContext suspended until user gesture
+        const onStateChange = () => {
+          if (ctx.state === "running") {
+            ctx.removeEventListener("statechange", onStateChange);
+            initAudioGraph(ctx);
+          }
+        };
+        ctx.addEventListener("statechange", onStateChange);
+        ctx.resume(); // attempt — succeeds only from gesture context
+      }
     } catch {
-      // Si el navegador bloquea: silencio sin error
+      // silencio si el navegador bloquea
     }
   }
 
   useEffect(() => {
     runningRef.current = true;
 
-    // Arrancar música después del splash (~5s)
     const boot = setTimeout(start, 5200);
     timersRef.current.push(boot);
 
-    // iOS Safari: reanudar AudioContext en primer toque
+    // iOS Safari: reanudar AudioContext suspendido en primer gesto
     const resume = () => {
-      ctxRef.current?.resume();
+      if (ctxRef.current?.state === "suspended") {
+        ctxRef.current.resume(); // esto dispara el statechange → initAudioGraph
+      }
       if (!startedRef.current) start();
     };
     document.addEventListener("touchstart", resume, { once: true });
     document.addEventListener("click",      resume, { once: true });
 
-    // Cambio de volumen desde Mi Perfil
     const onVolumeChange = (e: Event) => {
       const vol = (e as CustomEvent<{ volume: number }>).detail.volume;
       if (!masterRef.current || !ctxRef.current) return;
@@ -297,7 +279,6 @@ export default function BackgroundMusic() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Mute / unmute
   useEffect(() => {
     localStorage.setItem("telos-music-muted", muted ? "1" : "0");
     if (!masterRef.current || !ctxRef.current) return;

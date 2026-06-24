@@ -229,8 +229,8 @@ export default function SplashScreen() {
           to   { transform: scale(1);   opacity: 1; }
         }
         @keyframes telosTriIn {
-          from { opacity: 0; transform: translateY(6px) scale(0.94); transform-origin: center; }
-          to   { opacity: 1; transform: translateY(0)  scale(1); }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
         @keyframes telosTextIn {
           from { opacity: 0; transform: translateY(10px); }
