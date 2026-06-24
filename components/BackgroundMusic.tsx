@@ -213,37 +213,43 @@ export default function BackgroundMusic() {
 
       if (ctx.state === "running") {
         initAudioGraph(ctx);
-      } else {
-        // iOS Safari — AudioContext suspended until user gesture
-        const onStateChange = () => {
-          if (ctx.state === "running") {
-            ctx.removeEventListener("statechange", onStateChange);
-            initAudioGraph(ctx);
-          }
-        };
-        ctx.addEventListener("statechange", onStateChange);
-        ctx.resume(); // attempt — succeeds only from gesture context
       }
+      // If suspended, wait for unlockAudio() to be called from gesture
     } catch {
-      // silencio si el navegador bloquea
+      startedRef.current = false; // allow retry from gesture
     }
+  }
+
+  function unlockAudio() {
+    // Ensure ctx exists
+    if (!startedRef.current) start();
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    // Silent buffer — iOS Safari standard unlock pattern
+    try {
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {}
+
+    ctx.resume().then(() => {
+      initAudioGraph(ctx);
+    }).catch(() => {});
   }
 
   useEffect(() => {
     runningRef.current = true;
 
+    // Desktop: auto-start after splash
     const boot = setTimeout(start, 5200);
     timersRef.current.push(boot);
 
-    // iOS Safari: reanudar AudioContext suspendido en primer gesto
-    const resume = () => {
-      if (ctxRef.current?.state === "suspended") {
-        ctxRef.current.resume(); // esto dispara el statechange → initAudioGraph
-      }
-      if (!startedRef.current) start();
-    };
-    document.addEventListener("touchstart", resume, { once: true });
-    document.addEventListener("click",      resume, { once: true });
+    // iOS Safari: unlock on first gesture
+    document.addEventListener("touchstart", unlockAudio, { once: true });
+    document.addEventListener("click",      unlockAudio, { once: true });
 
     const onVolumeChange = (e: Event) => {
       const vol = (e as CustomEvent<{ volume: number }>).detail.volume;
@@ -261,8 +267,8 @@ export default function BackgroundMusic() {
       timersRef.current.forEach(clearTimeout);
       timersRef.current = [];
 
-      document.removeEventListener("touchstart", resume);
-      document.removeEventListener("click",      resume);
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click",      unlockAudio);
       window.removeEventListener("telos-volume-change", onVolumeChange);
 
       dronesRef.current.forEach((osc) => {
