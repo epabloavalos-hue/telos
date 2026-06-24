@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Habit {
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  category     String    @default("SALUD")
+  type         String    @default("POSITIVE")
+  timeOfDay    String    @default("ANYTIME")
+  frequency    String    @default("DAILY")
+  specificDays String?
+  isNumeric    Boolean   @default(false)
+  targetValue  Float?
+  unit         String?
+  color        String    @default("#888888")
+  icon         String    @default("○")
+  reminderTime String?
+  isArchived   Boolean   @default(false)
+  order        Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  logs         HabitLog[]
+}
+
+model Settings {
+  id           String   @id @default("singleton")
+  photoPath    String?
+  language     String   @default("es")
+  timezone     String   @default("America/Mexico_City")
+  userName     String   @default("Pablo")
+  soundEnabled Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+model HabitLog {
+  id        String   @id @default(cuid())
+  habitId   String
+  date      String
+  completed Boolean  @default(false)
+  value     Float?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, date])
+}
+
+model DayIntention {
+  id        String   @id @default(cuid())
+  date      String   @unique
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

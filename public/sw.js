@@ -1,0 +1,73 @@
+const CACHE = "telos-v1";
+
+// Assets estáticos de Next.js que se pre-cachean
+const PRECACHE = ["/", "/habitos", "/estadisticas", "/analisis", "/perfil"];
+
+// ── Instalación ──────────────────────────────────────────────────────────────
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+  );
+});
+
+// ── Activación: limpia cachés viejos ─────────────────────────────────────────
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+// ── Fetch: estrategia híbrida ─────────────────────────────────────────────────
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  // Rutas de API y uploads → siempre red (nunca cachear datos dinámicos)
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/uploads/")) {
+    event.respondWith(
+      fetch(event.request).catch(() => new Response(JSON.stringify({ error: "offline" }), {
+        headers: { "Content-Type": "application/json" },
+      }))
+    );
+    return;
+  }
+
+  // Assets de Next.js (_next/static) → Cache First
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.match(event.request).then(
+        (cached) => cached || fetch(event.request).then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(event.request, clone));
+          }
+          return res;
+        })
+      )
+    );
+    return;
+  }
+
+  // Páginas de navegación → Network First con fallback a caché
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(event.request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Resto → Network First
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
+});
